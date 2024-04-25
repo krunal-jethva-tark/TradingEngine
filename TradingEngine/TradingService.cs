@@ -7,83 +7,59 @@ namespace TradingEngine;
 public interface ITradingService
 {
     void CheckForTrades(Order order);
-    List<Trade> ExecuteTrades();
     List<Trade> GetAllTrades();
 }
 
-public class TradingService : ITradingService
+public class TradingService(IOrderRepo orderRepo, ITradeRepo tradeRepo) : ITradingService
 {
-    private readonly IOrderRepo _orderRepo;
-    private readonly ITradeRepo _tradeRepo;
-
-    public TradingService(IOrderRepo orderRepo, ITradeRepo tradeRepo)
+    public void CheckForTrades(Order order)
     {
-        _orderRepo = orderRepo;
-        _tradeRepo = tradeRepo;
+
+        var matchingTradeOrders = GetMatchingOrdersForCurrentOrder(order);
+
+        foreach (var matchingTradeOrder in matchingTradeOrders)
+        {
+            var buyOrder = order.Type == OrderType.Bid ? order : matchingTradeOrder;
+            var sellOrder = order.Type == OrderType.Bid ? matchingTradeOrder : order;
+        
+            var tradeQuantity = Math.Min(buyOrder.Quantity, sellOrder.Quantity);
+            if (tradeQuantity <= 0)
+                continue;
+            
+            var trade = new Trade
+            {
+                BuyOrder = buyOrder,
+                SellOrder = sellOrder,
+                Price = matchingTradeOrder.Price,
+                Quantity = tradeQuantity,
+                StockSymbol = matchingTradeOrder.StockSymbol
+            };
+            
+            tradeRepo.AddTrade(trade);
+
+            buyOrder.Quantity -= tradeQuantity;
+            sellOrder.Quantity -= tradeQuantity;
+            
+            if (sellOrder.Quantity == 0 || buyOrder.Quantity == 0) continue;
+        }
     }
 
-    public void CheckForTrades(Order order)
+    private IEnumerable<Order> GetMatchingOrdersForCurrentOrder(Order order)
     {
         var currentOrders = order.Type switch
         {
-            OrderType.Bid => _orderRepo.GetOpenSellOrders().ToList(),
-            OrderType.Offer => _orderRepo.GetOpenBuyOrders().ToList(),
+            OrderType.Bid => orderRepo.GetOpenSellOrders().ToList(),
+            OrderType.Offer => orderRepo.GetOpenBuyOrders().ToList(),
             _ => throw new ArgumentOutOfRangeException()
         };
         
-        var matchingTradeOrder =
-            currentOrders.FirstOrDefault(o => o.StockSymbol == order.StockSymbol && (order.Type == OrderType.Bid ? o.Price <= order.Price : o.Price > order.Price)); // fix this condition
-
-        if (matchingTradeOrder == null) return;
-        
-        var buyOrder = order.Type == OrderType.Bid ? order : matchingTradeOrder;
-        var sellOrder = order.Type == OrderType.Bid ? matchingTradeOrder : order;
-        
-        // hanle multiple sell senrios and all
-        var tradePrice = order.Type == OrderType.Bid ? order.Price : matchingTradeOrder.Price; // always execute order at buying price
-        const int tradeQuantity = 1;
-        var trade = new Trade
-        {
-            BuyOrder = buyOrder,
-            SellOrder = sellOrder,
-            Price = tradePrice,
-            Quantity = tradeQuantity,
-        };
-        _tradeRepo.AddTrade(trade);
-    }
-    
-    public List<Trade> ExecuteTrades()
-    {
-        var trades = new List<Trade>();
-
-        // foreach (var buyOrder in _buyOrders.ToList())
-        // {
-        //     var matchingSellOrder = _sellOrders.FirstOrDefault(o => o.StockSymbol == buyOrder.StockSymbol
-        //                                                             && o.Price <= buyOrder.Price);
-        //
-        //     if (matchingSellOrder != null)
-        //     {
-        //         var tradePrice = matchingSellOrder.Price;
-        //         const int tradeQuantity = 1; // Assuming one share per trade for simplicity
-        //         var trade = new Trade
-        //         {
-        //             BuyOrder = buyOrder,
-        //             SellOrder = matchingSellOrder,
-        //             Price = tradePrice,
-        //             Quantity = tradeQuantity
-        //         };
-        //
-        //         trades.Add(trade);
-        //         _buyOrders.Remove(buyOrder);
-        //         _sellOrders.Remove(matchingSellOrder);
-        //     }
-        // }
-
-        return trades;
+        return currentOrders.Where(o =>
+            o.StockSymbol == order.StockSymbol &&
+            (order.Type == OrderType.Bid ? o.Price <= order.Price : o.Price > order.Price));
     }
 
     public List<Trade> GetAllTrades()
     {
-        return _tradeRepo.GetTrades();
+        return tradeRepo.GetTrades();
     }
 }
