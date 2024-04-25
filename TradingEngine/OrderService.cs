@@ -17,7 +17,7 @@ public class OrderService
     public void PlaceOrder(Order order)
     {
         _orderRepo.AddOrder(order);
-        _tradingService.CheckForTrades(order);
+        _tradingService.TryToExecuteTrades(order);
     }
     
 }

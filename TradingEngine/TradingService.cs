@@ -6,13 +6,13 @@ namespace TradingEngine;
 
 public interface ITradingService
 {
-    void CheckForTrades(Order order);
+    void TryToExecuteTrades(Order order);
     List<Trade> GetAllTrades();
 }
 
 public class TradingService(IOrderRepo orderRepo, ITradeRepo tradeRepo) : ITradingService
 {
-    public void CheckForTrades(Order order)
+    public void TryToExecuteTrades(Order order)
     {
 
         var matchingTradeOrders = GetMatchingOrdersForCurrentOrder(order);
