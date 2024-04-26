@@ -3,21 +3,11 @@ using TradingEngine.Domain.Models;
 
 namespace TradingEngine;
 
-public class OrderService
+public class OrderService(IOrderRepo orderRepo, ITradingService tradingService)
 {
-    private readonly IOrderRepo _orderRepo;
-    private readonly ITradingService _tradingService;
-
-    public OrderService(IOrderRepo orderRepo, ITradingService tradingService)
-    {
-        _orderRepo = orderRepo;
-        _tradingService = tradingService;
-    }
-    
     public void PlaceOrder(Order order)
     {
-        _orderRepo.AddOrder(order);
-        _tradingService.TryToExecuteTrades(order);
+        orderRepo.AddOrder(order);
+        tradingService.TryToExecuteTrades(order);
     }
-    
 }

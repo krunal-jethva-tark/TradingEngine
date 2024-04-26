@@ -19,43 +19,56 @@ public class TradingService(IOrderRepo orderRepo, ITradeRepo tradeRepo) : ITradi
 
         foreach (var matchingTradeOrder in matchingTradeOrders)
         {
-            var buyOrder = order.Type == OrderType.Bid ? order : matchingTradeOrder;
-            var sellOrder = order.Type == OrderType.Bid ? matchingTradeOrder : order;
-        
-            var tradeQuantity = Math.Min(buyOrder.Quantity, sellOrder.Quantity);
-            if (tradeQuantity <= 0)
-                continue;
-            
-            var trade = new Trade
-            {
-                BuyOrder = buyOrder,
-                SellOrder = sellOrder,
-                Price = matchingTradeOrder.Price,
-                Quantity = tradeQuantity,
-                StockSymbol = matchingTradeOrder.StockSymbol
-            };
-            
-            tradeRepo.AddTrade(trade);
-
-            buyOrder.Quantity -= tradeQuantity;
-            sellOrder.Quantity -= tradeQuantity;
-            
-            if (sellOrder.Quantity == 0 || buyOrder.Quantity == 0) continue;
+            ExecuteTrade(order, matchingTradeOrder);
         }
     }
-
+    
     private IEnumerable<Order> GetMatchingOrdersForCurrentOrder(Order order)
     {
-        var currentOrders = order.Type switch
+        return order.Type switch
         {
-            OrderType.Bid => orderRepo.GetOpenSellOrders().ToList(),
-            OrderType.Offer => orderRepo.GetOpenBuyOrders().ToList(),
+            OrderType.Bid => orderRepo.GetOpenSellOrders()
+                .Where(o => o.Id != order.Id && o.UserId != order.UserId && o.StockSymbol == order.StockSymbol && o.Price <= order.Price && o.Timestamp < order.Timestamp),
+            OrderType.Offer => orderRepo.GetOpenBuyOrders()
+                .Where(o => o.Id != order.Id && o.UserId != order.UserId && o.StockSymbol == order.StockSymbol && o.Price >= order.Price && o.Timestamp < order.Timestamp),
             _ => throw new ArgumentOutOfRangeException()
         };
+    }
+
+    private void ExecuteTrade(Order order, Order matchingTradeOrder)
+    {
+        var (buyOrder, sellOrder) = GetBuyAndSellOrders(order, matchingTradeOrder);
+        var tradeQuantity = Math.Min(buyOrder.Quantity, sellOrder.Quantity);
+        var tradePrice = matchingTradeOrder.Price;
         
-        return currentOrders.Where(o =>
-            o.StockSymbol == order.StockSymbol &&
-            (order.Type == OrderType.Bid ? o.Price <= order.Price : o.Price > order.Price));
+        if (tradeQuantity <= 0)
+            return;
+            
+        var trade = CreateTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
+            
+        tradeRepo.AddTrade(trade);
+
+        buyOrder.Quantity -= tradeQuantity;
+        sellOrder.Quantity -= tradeQuantity;
+    }
+
+    private static (Order buyOrder, Order sellOrder) GetBuyAndSellOrders(Order order, Order matchingTradeOrder)
+    {
+        return order.Type == OrderType.Bid
+            ? (order, matchingTradeOrder)
+            : (matchingTradeOrder, order);
+    }
+
+    private static Trade CreateTrade(Order buyOrder, Order sellOrder, decimal tradePrice, int tradeQuantity)
+    {
+        return new Trade
+        {
+            BuyOrder = buyOrder,
+            SellOrder = sellOrder,
+            Price = tradePrice,
+            Quantity = tradeQuantity,
+            StockSymbol = buyOrder.StockSymbol
+        };
     }
 
     public List<Trade> GetAllTrades()
